@@ -15,5 +15,3 @@
     - Access endpoints other than /auth/ using the obtained JWT token
     - To remove a custom field value, set `value=null`
         - `valueId=null` for enum field
-# itglobal-rest-go
-# itglobal-todos-rmq-go
