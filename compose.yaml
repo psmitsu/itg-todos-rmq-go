@@ -1,0 +1,186 @@
+services:
+  # api gateway
+  gateway:
+    build:
+      context: ./gateway/
+      # use dev stage of the image
+      target: dev
+    ports:
+      - 3000:3000
+      # map the debug port
+      # - 9229:9229
+    environment:
+      - NODE_ENV=production
+      - RMQ_HOST=rmq
+      - RMQ_PORT=5672
+      - AUTH_QUEUE=authq
+      - TODOS_QUEUE=todosq
+      # - AUTH_HOST=auth
+      # - AUTH_PORT=3001
+      # - TODOS_HOST=todos
+      # - TODOS_PORT=3002
+    volumes:
+      # bind mount src s.t. changes to source reflected in container immediately
+      - ./gateway/src:/home/node/src
+  # users microservice
+  auth:
+    build:
+      context: ./auth/
+      # use dev stage of the image
+      target: dev
+    expose:
+      - 3001
+    # ports:
+    #   - 3001:3001
+      # map the debug port
+      # - 9229:9229
+    environment:
+      - NODE_ENV=production
+      # - AUTH_HOST=auth
+      # - AUTH_PORT=3001
+      - RMQ_HOST=rmq
+      - RMQ_PORT=5672
+      - AUTH_QUEUE=authq
+      - JWT_SECRET=${JWT_SECRET}
+      - POSTGRES_HOST=auth-db
+      - POSTGRES_PORT=5432
+      - POSTGRES_DB=${POSTGRES_DB}
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+    depends_on:
+      # start the database before the application
+      auth-db:
+        condition: service_healthy
+    volumes:
+      # bind mount src s.t. changes to source reflected in container immediately
+      - ./auth/src:/home/node/src
+  auth-db:
+    image: postgres
+    restart: always
+    user: postgres
+    volumes:
+      # persist database data in a docker volume
+      - auth-data:/var/lib/postgresql/data
+    environment:
+      - POSTGRES_DB=${POSTGRES_DB}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+    expose:
+      - 5432
+    healthcheck:
+      test: [ "CMD", "pg_isready" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+  # todos microservice
+  todos:
+    build:
+      context: ./todos/
+      # use dev stage of the image
+      target: dev
+    expose:
+      - 3002
+    # ports:
+    #   - 3002:3002
+      # map the debug port
+      # - 9229:9229
+    environment:
+      - NODE_ENV=production
+      - RMQ_HOST=rmq
+      - RMQ_PORT=5672
+      - TODOS_QUEUE=todosq
+      - FV_QUEUE=fvqueue
+      # - TODOS_HOST=todos
+      # - TODOS_PORT=3002
+      - POSTGRES_HOST=todos-db
+      - POSTGRES_PORT=5432
+      - POSTGRES_DB=${POSTGRES_DB}
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+    depends_on:
+      # start the database before the application
+      todos-db:
+        condition: service_healthy
+      rmq:
+        condition: service_healthy
+    volumes:
+      # bind mount src s.t. changes to source reflected in container immediately
+      - ./todos/src:/home/node/src
+  todos-db:
+    image: postgres
+    restart: always
+    user: postgres
+    volumes:
+      # persist database data in a docker volume
+      - todos-data:/var/lib/postgresql/data
+    environment:
+      - POSTGRES_DB=${POSTGRES_DB}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+    expose:
+      - 5432
+    healthcheck:
+      test: [ "CMD", "pg_isready" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+  # field values microservice
+  fieldvalues:
+    build:
+      context: ./fieldvalues/
+      # use dev stage of the image
+      # target: build-release-stage
+    develop:
+      watch:
+        - action: rebuild
+          path: ./fieldvalues/
+    expose:
+      - 8080
+    # ports:
+    #   - 8080:8080
+    environment:
+      - RMQ_HOST=rmq
+      - RMQ_PORT=5672
+      - QUEUE=fvqueue
+      - POSTGRES_HOST=fieldvalues-db
+      - POSTGRES_PORT=5432
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=${POSTGRES_DB}
+    depends_on:
+      fieldvalues-db:
+        condition: service_healthy
+      rmq:
+        condition: service_healthy
+  fieldvalues-db:
+    image: postgres
+    restart: always
+    user: postgres
+    volumes:
+      # persist database data in a docker volume
+      - fieldvalues-data:/var/lib/postgresql/data
+    environment:
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_PORT=5432
+      - POSTGRES_DB=${POSTGRES_DB}
+    expose:
+      - 5432
+    healthcheck:
+      test: [ "CMD", "pg_isready" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+  # RabbitMQ service
+  rmq:
+    image: rabbitmq
+    restart: always
+    expose:
+      - 5672
+    hostname: "rmq"
+    healthcheck:
+      test: rabbitmq-diagnostics -q ping
+      interval: 10s
+      timeout: 5s
+      retries: 53
+volumes:
+  auth-data:
+  todos-data:
+  fieldvalues-data:
